@@ -29,8 +29,8 @@ USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
 
 MEMCACHE_MOVES_REMAINING = 'MOVES_REMAINING'
 
-@endpoints.api(name='guess_a_number', version='v1')
-class GuessANumberApi(remote.Service):
+@endpoints.api(name='paulshangman', version='v1')
+class PaulsHangmanApi(remote.Service):
     """Game API"""
     @endpoints.method(request_message=USER_REQUEST,
                       response_message=StringMessage,
@@ -59,17 +59,20 @@ class GuessANumberApi(remote.Service):
             raise endpoints.NotFoundException(
                     'A User with that name does not exist!')
         try:
-            game = Game.new_game(user.key, request.min,
-                                 request.max, request.attempts)
+            game_word = rand_english_word(request.word_size)
         except ValueError:
-            raise endpoints.BadRequestException('Maximum must be greater '
-                                                'than minimum!')
+            raise endpoints.BadRequestException('No target words of requested '
+                                                'length available!')
+
+        # Input has been validated, generating game object.
+        game = Game.new_game(user.key, game_word, request.attempts)
+
 
         # Use a task queue to update the average attempts remaining.
         # This operation is not needed to complete the creation of a new game
         # so it is performed out of sequence.
         taskqueue.add(url='/tasks/cache_average_attempts')
-        return game.to_form('Good luck playing Guess a Number!')
+        return game.to_form('Good luck playing Pauls Hangman!')
 
     @endpoints.method(request_message=GET_GAME_REQUEST,
                       response_message=GameForm,
@@ -91,26 +94,50 @@ class GuessANumberApi(remote.Service):
                       http_method='PUT')
     def make_move(self, request):
         """Makes a move. Returns a game state with message"""
+        # check pre-existing game state:
         game = get_by_urlsafe(request.urlsafe_game_key, Game)
         if game.game_over:
             return game.to_form('Game already over!')
 
-        game.attempts_remaining -= 1
-        if request.guess == game.target:
-            game.end_game(True)
-            return game.to_form('You win!')
+        # check for first round, init completness tracker:
+        if game.current_guesses == []:
+            completed_letters = []
+            for i in game.game_word:
+                completed_letters.append('_')
+            game.current_guesses = completed_letters[:-1] # remove newline char
 
-        if request.guess < game.target:
-            msg = 'Too low!'
+        # process a correct guess.
+        if request.guess in game.game_word:
+            # check each letter against each position, update completness
+            # tracking in the current_guesses list:
+            for char in game.game_word:
+                count = 0
+                while count < len(game.current_guesses):
+                    if request.guess == game.game_word[count]:
+                        game.current_guesses[count] = request.guess
+                    count += 1
+            msg = 'correct guess! {}'.format(game.current_guesses)
+
+        # process a failed request
         else:
-            msg = 'Too high!'
+            # update game progress:
+            game.tries_remaining -= 1
+            msg = 'Wrong guess, {} tries remaining'.format(game.tries_remaining)
 
-        if game.attempts_remaining < 1:
+        # handle end game state.
+        if game.tries_remaining < 1:
             game.end_game(False)
             return game.to_form(msg + ' Game over!')
-        else:
-            game.put()
-            return game.to_form(msg)
+
+        # As the game progresses, the _ are removed from the current_guesses
+        # list. The absence of an _ indicates a final guess was succesful.
+        if '_' not in game.current_guesses:
+            game.end_game(True)
+            msg = '{msg} You win, the word was {solution}'.format(
+                                                        msg=msg,
+                                                        solution=game.game_word)
+        game.put()
+        return game.to_form(msg)
 
     @endpoints.method(response_message=ScoreForms,
                       path='scores',
@@ -136,7 +163,7 @@ class GuessANumberApi(remote.Service):
 
     @endpoints.method(response_message=StringMessage,
                       path='games/average_attempts',
-                      name='get_average_attempts_remaining',
+                      name='get_average_tries_remaining',
                       http_method='GET')
     def get_average_attempts(self, request):
         """Get the cached average moves remaining"""
@@ -148,11 +175,11 @@ class GuessANumberApi(remote.Service):
         games = Game.query(Game.game_over == False).fetch()
         if games:
             count = len(games)
-            total_attempts_remaining = sum([game.attempts_remaining
+            total_tries_remaining = sum([game.tries_remaining
                                         for game in games])
-            average = float(total_attempts_remaining)/count
+            average = float(total_tries_remaining)/count
             memcache.set(MEMCACHE_MOVES_REMAINING,
                          'The average moves remaining is {:.2f}'.format(average))
 
 
-api = endpoints.api_server([GuessANumberApi])
+api = endpoints.api_server([PaulsHangmanApi])

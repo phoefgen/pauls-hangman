@@ -40,9 +40,9 @@ class hangman():
         self.game_word = gamefunc.rand_english_word(WORD_SIZE)
         self.max_tries = MAX_TRIES
         self.num_guesses = 0
-        self.completed_letters = self.guess_status()
+        self.completed_letters = self._guess_status()
 
-    def guess_status(self, completed_letters=[]):
+    def _guess_status(self, completed_letters=[]):
         if completed_letters == []:
             for i in range(WORD_SIZE):
                 completed_letters.append('_')
@@ -61,7 +61,7 @@ class hangman():
                 letter = 'aa'
         return letter
 
-    def verify_guess(self, guess):
+    def _verify_guess(self, guess):
         # check to see if guess is in game word.
         if guess in self.game_word:
             location = self.game_word.index(guess)
@@ -81,7 +81,7 @@ class hangman():
             print self.completed_letters
             print 'Guess a letter!'
             guess = self.make_guess()
-            if self.verify_guess(guess):
+            if self._verify_guess(guess):
                 print 'Correct Guess!'
                 if '_' not in self.completed_letters:
                     print 'Game over! You Win!'

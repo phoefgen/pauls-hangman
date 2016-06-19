@@ -8,7 +8,7 @@ def rand_english_word(length):
 
     potential_word = []
     # run through a dictionary, return a random words of the defined length.
-    with open('data/dictionary.dat') as f:
+    with open('dictionary.dat') as f:
         wordlist = f.readlines()
         for word in wordlist:
             if len(word) == length + 1:
@@ -25,7 +25,4 @@ def rand_english_word(length):
     # verified word, convert to list of chars and del the newline:
     word = potential_word[random.randint(1,word_number)]
     # debug:
-    word = 'abcdef\n'
-    final_word = list(word)
-    del final_word[-1]
-    return final_word
+    return word
