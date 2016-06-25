@@ -43,6 +43,7 @@ class Game(ndb.Model):
     game_deleted = ndb.BooleanProperty(required=True, default=False)
     user = ndb.KeyProperty(required=True, kind='User')
     current_guesses = ndb.StringProperty(repeated=True)
+    move_history = ndb.StringProperty(repeated=True)
 
     @classmethod
     def new_game(cls, user, game_word, attempts):
@@ -51,7 +52,8 @@ class Game(ndb.Model):
                     game_word=game_word,
                     max_tries=attempts,
                     tries_remaining=attempts,
-                    game_over=False)
+                    game_over=False,
+                    move_history=[])
         game.put()
         return game
 
@@ -64,6 +66,12 @@ class Game(ndb.Model):
         form.game_over = self.game_over
         form.message = message
         form.game_deleted = self.game_deleted
+        return form
+
+    def to_history_form(self):
+        """ returns all moves in a game """
+        form = GameHistory()
+        form.move_history = str(self.move_history)
         return form
 
     def end_game(self, won=False):
@@ -161,6 +169,9 @@ class UserRank(messages.Message):
     """UserRank for outbound ranking information """
     user_name = messages.StringField(1, required=True)
     ranking_score = messages.IntegerField(2, required=True)
+
+class GameHistory(messages.Message):
+    move_history = messages.StringField(1, required=True)
 
 ################################################################################
     ### Meta-Form Messages###

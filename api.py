@@ -12,15 +12,20 @@ from google.appengine.api import taskqueue
 
 from models import User, Game, Score
 from models import StringMessage, NewGameForm, GameForm, MakeMoveForm,\
-    ScoreForms, UserGames, UserRankings
+    ScoreForms, UserGames, UserRankings, GameHistory
 from utils import get_by_urlsafe
 
 from gamefunc import rand_english_word
 
+################################################################################
+    ### GAE Resource Containers: ###
+################################################################################
 NEW_GAME_REQUEST = endpoints.ResourceContainer(NewGameForm)
 GET_GAME_REQUEST = endpoints.ResourceContainer(
         urlsafe_game_key=messages.StringField(1),)
 DEL_GAME_REQUEST = endpoints.ResourceContainer(
+        urlsafe_game_key=messages.StringField(1),)
+GET_GAME_HISTORY = endpoints.ResourceContainer(
         urlsafe_game_key=messages.StringField(1),)
 MAKE_MOVE_REQUEST = endpoints.ResourceContainer(
     MakeMoveForm,
@@ -30,13 +35,14 @@ USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
 USER_GAMES = endpoints.ResourceContainer(UserGames)
 LEADERBOARD = endpoints.ResourceContainer(
                                      number_of_results=messages.IntegerField(1))
-
-
 MEMCACHE_MOVES_REMAINING = 'MOVES_REMAINING'
+
 
 @endpoints.api(name='paulshangman', version='v1')
 class PaulsHangmanApi(remote.Service):
     """Game API"""
+
+
 ################################################################################
     ### User Management Methods ###
 ################################################################################
@@ -113,6 +119,19 @@ class PaulsHangmanApi(remote.Service):
         else:
             raise endpoints.NotFoundException('Game not found!')
 
+    @endpoints.method(request_message=GET_GAME_HISTORY,
+                      response_message=GameHistory,
+                      path='game/history/{urlsafe_game_key}',
+                      name='get_game_history',
+                      http_method='GET')
+    def get_game_history(self, request):
+        """Return the historical game moves."""
+        game = get_by_urlsafe(request.urlsafe_game_key, Game)
+        if game:
+            return game.to_history_form()
+        else:
+            raise endpoints.NotFoundException('Game not found!')
+
     @endpoints.method(request_message=DEL_GAME_REQUEST,
                       response_message=GameForm,
                       path='del_game/{urlsafe_game_key}',
@@ -139,17 +158,26 @@ class PaulsHangmanApi(remote.Service):
                       http_method='PUT')
     def make_move(self, request):
         """Makes a move. Returns a game state with message"""
+
         # check pre-existing game state:
         game = get_by_urlsafe(request.urlsafe_game_key, Game)
         if game.game_over:
             return game.to_form('Game already over!')
 
-        # check for first round, init completness tracker:
+        # init completness tracker on first guess:
         if game.current_guesses == []:
-            completed_letters = []
+            completed_letters = []  # init success tracking
             for i in game.game_word:
                 completed_letters.append('_')
             game.current_guesses = completed_letters[:-1] # remove newline char
+
+        ## Track all moves in the datastore:
+        # process new moves:
+        move_outcome = 'Correct Guess: False'
+        if request.guess in game.game_word:
+            move_outcome = 'Correct Guess: True'
+        move = '(Player Guess: {0} {1})'.format(request.guess, move_outcome)
+        game.move_history.append(move)
 
         # process a correct guess.
         if request.guess in game.game_word:
@@ -172,6 +200,7 @@ class PaulsHangmanApi(remote.Service):
         # handle end game state.
         if game.tries_remaining < 1:
             game.end_game(False)
+            game.move_history.append('Correctly Guessed word, Game Over!')
             game.put()
             return game.to_form(msg + ' Game over!')
 
@@ -214,8 +243,7 @@ class PaulsHangmanApi(remote.Service):
                     'No Games exist.')
         # Optionally limit results to passed in param.
         scores = scores.fetch(limit=request.number_of_results)
-        return ScoreForms(
-                        items=[score.to_form() for score in scores])
+        return ScoreForms(items=[score.to_form() for score in scores])
 
     @endpoints.method(request_message=USER_REQUEST,
                       response_message=ScoreForms,
