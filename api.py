@@ -110,7 +110,7 @@ class PaulsHangmanApi(remote.Service):
                       response_message=GameForm,
                       path='game/{urlsafe_game_key}',
                       name='get_game',
-                      http_method='GET')
+                      http_method='POST')
     def get_game(self, request):
         """Return the current game state."""
         game = get_by_urlsafe(request.urlsafe_game_key, Game)
@@ -230,7 +230,7 @@ class PaulsHangmanApi(remote.Service):
                       response_message=ScoreForms,
                       path='leader_board',
                       name='leader_board',
-                      http_method='GET')
+                      http_method='POST')
     def leader_board(self, request):
         """Return a leaderboard. A complete game with more tries_remaining ranks
            higher than a complete game with less tries remaining. A correct

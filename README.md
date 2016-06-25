@@ -37,6 +37,9 @@ settings.
  - utils.py: Helper function for retrieving `ndb.Models` by urlsafe Key string.
  - gamefunc.py: for generating target words from a list of the 10 000 most common english words.
  - dictionary.dat: A list of the 10 000 most common english words.
+ - design.txt: some thoughts on the model design.
+ - hangman.py: a standalone CLI implementation of hangman used to initially model
+ the data models, and game mechanics. 
 
 ##Endpoints Included:
  - **create_user**
@@ -137,13 +140,13 @@ was started, including attempts and success of attempts.
   differs from user rankings, because it ignores historical games, or users
   history.
 
- - **get_active_game_count**
-    - Path: 'games/active'
-    - Method: GET
-    - Parameters: None
-    - Returns: StringMessage
-    - Description: Gets the average number of attempts remaining for all games
-    from a previously cached memcache key.
+- **get_active_game_count**
+  - Path: 'games/active'
+  - Method: GET
+  - Parameters: None
+  - Returns: StringMessage
+  - Description: Gets the average number of attempts remaining for all games
+  from a previously cached memcache key.
 
 ##Models Included:
  - **User**

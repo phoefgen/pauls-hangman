@@ -1,0 +1,59 @@
+What Additional properties were added and why?
+
+  Most of the parameters were added to the model, to allow the datastore engine
+  to handle most of the heavy lifting, and to let google optimse the DB search
+  formats.
+
+USER MODEL:
+
+- Ranking Score: A ranking score removes the need for generating large amounts
+  of queries when calling the ranking methods. Because ranking scores are
+  updated as part of the end_game actions, there is only ever a need to handle
+  the previous ranking score, instead of manipulating the whole set of games,
+  and tracking them in sets of arrays.
+
+- Completed Games allows the ranking to reflect historical performance.
+  Increasing this count by one at the end of a game, also saves IO costs at
+  scale, because it is not nessesary to pull every single game instance to get
+  the ranking data. A single read on the user model will do the job of dozens of
+  reads on the game models (ie, pull and count every game ever played.)
+
+GAME MODEL:
+
+- Game word was required for the new game format, the game word need to be
+  Consistent for all operations on the game model.
+
+- Max tries is a method of increasing the difficulty of the game by an arbitrary
+  user configurable amount.
+
+- This was required to track the game state, and is the key definition of the
+  game over condition.
+
+- Game deleted was chosen, because retaining cancelled games provides a mechanism
+  to track metrics, and improve the game engine. Deleting the game record, would
+  not allow a correlation between types of words and cancelled games for example.
+
+- Current guesses is part of the game model, but also allows tracking game state.
+  position of letters is important in hangman, because it allows a player to infer
+  words from the position of letters. A list of chars that has placeholders also
+  allows for handling words where there are multiple instances of a letter in a
+  word.
+
+- move_history game history needs a place to live, and is strongly associated
+  with a game, not a user.
+
+SCORE MODEL:
+
+- points were added, because the individual game needs an outcome, independant of
+  the ranking score. Especially for new and unskilled players.
+
+PROBLEMS:
+
+App engine is elegant, but complex. Multiple class inheritance, and a large code
+base mean that its easy to get lost. As well as working in an abstracted state
+due to the lack of an available front end were difficult.
+
+Alot of the abstraction problems were resolved however by building a stand alone
+version of the implementation, with a CLI front end that allowed me to solve the
+implementation problems in an isolated and familiar enviroment. That only left
+the google app engine CLI to implement.
