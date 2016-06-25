@@ -12,5 +12,30 @@ indexes:
 
 - kind: Game
   properties:
+  - name: game_deleted
+  - name: game_over
+  - name: tries_remaining
+    direction: desc
+
+- kind: Game
+  properties:
+  - name: game_deleted
+  - name: tries_remaining
+    direction: desc
+
+- kind: Game
+  properties:
   - name: game_over
   - name: user
+
+- kind: Game
+  properties:
+  - name: won
+  - name: points
+    direction: desc
+
+- kind: Score
+  properties:
+  - name: won
+  - name: points
+    direction: desc

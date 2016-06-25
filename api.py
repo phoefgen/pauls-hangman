@@ -4,7 +4,6 @@ This can also contain game logic. For more complex games it would be wise to
 move game logic to another file. Ideally the API will be simple, concerned
 primarily with communication to/from the API's users."""
 
-
 import logging
 import endpoints
 from protorpc import remote, messages
@@ -13,7 +12,7 @@ from google.appengine.api import taskqueue
 
 from models import User, Game, Score
 from models import StringMessage, NewGameForm, GameForm, MakeMoveForm,\
-    ScoreForms
+    ScoreForms, UserGames, UserRankings
 from utils import get_by_urlsafe
 
 from gamefunc import rand_english_word
@@ -21,17 +20,27 @@ from gamefunc import rand_english_word
 NEW_GAME_REQUEST = endpoints.ResourceContainer(NewGameForm)
 GET_GAME_REQUEST = endpoints.ResourceContainer(
         urlsafe_game_key=messages.StringField(1),)
+DEL_GAME_REQUEST = endpoints.ResourceContainer(
+        urlsafe_game_key=messages.StringField(1),)
 MAKE_MOVE_REQUEST = endpoints.ResourceContainer(
     MakeMoveForm,
     urlsafe_game_key=messages.StringField(1),)
 USER_REQUEST = endpoints.ResourceContainer(user_name=messages.StringField(1),
                                            email=messages.StringField(2))
+USER_GAMES = endpoints.ResourceContainer(UserGames)
+LEADERBOARD = endpoints.ResourceContainer(
+                                     number_of_results=messages.IntegerField(1))
+
 
 MEMCACHE_MOVES_REMAINING = 'MOVES_REMAINING'
 
 @endpoints.api(name='paulshangman', version='v1')
 class PaulsHangmanApi(remote.Service):
     """Game API"""
+################################################################################
+    ### User Management Methods ###
+################################################################################
+
     @endpoints.method(request_message=USER_REQUEST,
                       response_message=StringMessage,
                       path='user',
@@ -47,6 +56,24 @@ class PaulsHangmanApi(remote.Service):
         return StringMessage(message='User {} created!'.format(
                 request.user_name))
 
+    @endpoints.method(request_message=USER_REQUEST,
+                      response_message=UserGames,
+                      path='games/user/{user_name}',
+                      name='get_user_games',
+                      http_method='GET')
+    def get_user_games(self, request):
+        """Returns all of an individual User's games"""
+        user = User.query(User.name == request.user_name).get()
+        if not user:
+            raise endpoints.NotFoundException(
+                    'A User with that name does not exist!')
+        games = Game.query(Game.user == user.key).filter(
+                                                        Game.game_over == False)
+        return UserGames(items=[game.to_form('Active Game.') for game in games])
+
+################################################################################
+    ### Game Management Methods ###
+################################################################################
     @endpoints.method(request_message=NEW_GAME_REQUEST,
                       response_message=GameForm,
                       path='game',
@@ -67,7 +94,6 @@ class PaulsHangmanApi(remote.Service):
         # Input has been validated, generating game object.
         game = Game.new_game(user.key, game_word, request.attempts)
 
-
         # Use a task queue to update the average attempts remaining.
         # This operation is not needed to complete the creation of a new game
         # so it is performed out of sequence.
@@ -84,6 +110,25 @@ class PaulsHangmanApi(remote.Service):
         game = get_by_urlsafe(request.urlsafe_game_key, Game)
         if game:
             return game.to_form('Time to make a move!')
+        else:
+            raise endpoints.NotFoundException('Game not found!')
+
+    @endpoints.method(request_message=DEL_GAME_REQUEST,
+                      response_message=GameForm,
+                      path='del_game/{urlsafe_game_key}',
+                      name='del_game',
+                      http_method='GET')
+    def del_game(self, request):
+        """Delete a game in progress from the DB."""
+        game = get_by_urlsafe(request.urlsafe_game_key, Game)
+        if game:
+            if not game.game_over:
+                game.game_deleted = True
+                game.put()
+                return game.to_form('Game Deleted')
+            else:
+                raise endpoints.ForbiddenException(
+                                                'Cannot delete completed games')
         else:
             raise endpoints.NotFoundException('Game not found!')
 
@@ -127,7 +172,9 @@ class PaulsHangmanApi(remote.Service):
         # handle end game state.
         if game.tries_remaining < 1:
             game.end_game(False)
+            game.put()
             return game.to_form(msg + ' Game over!')
+
 
         # As the game progresses, the _ are removed from the current_guesses
         # list. The absence of an _ indicates a final guess was succesful.
@@ -146,6 +193,29 @@ class PaulsHangmanApi(remote.Service):
     def get_scores(self, request):
         """Return all scores"""
         return ScoreForms(items=[score.to_form() for score in Score.query()])
+
+################################################################################
+    ### Game Ranking Methods ###
+################################################################################
+    @endpoints.method(request_message=LEADERBOARD,
+                      response_message=ScoreForms,
+                      path='leader_board',
+                      name='leader_board',
+                      http_method='GET')
+    def leader_board(self, request):
+        """Return a leaderboard. A complete game with more tries_remaining ranks
+           higher than a complete game with less tries remaining. A correct
+           guess does not reduce tries_remaining."""
+
+        # Catch no games finished:
+        scores = Score.query(Score.won == True).order(-Score.points)
+        if not scores:
+            raise endpoints.NotFoundException(
+                    'No Games exist.')
+        # Optionally limit results to passed in param.
+        scores = scores.fetch(limit=request.number_of_results)
+        return ScoreForms(
+                        items=[score.to_form() for score in scores])
 
     @endpoints.method(request_message=USER_REQUEST,
                       response_message=ScoreForms,
@@ -169,6 +239,24 @@ class PaulsHangmanApi(remote.Service):
         """Get the cached average moves remaining"""
         return StringMessage(message=memcache.get(MEMCACHE_MOVES_REMAINING) or '')
 
+    @endpoints.method(response_message=UserRankings,
+                      path='get_user_rankings',
+                      name='get_user_rankings',
+                      http_method='GET')
+    def ranking(self, request):
+        """Return a global ranking. User ranking is updated at the end of each
+           game"""
+        # Return all users who have a completed_games, in order of ranking.
+        rankings = User.query().order(-User.ranking_score)
+
+
+        return UserRankings(
+                        items=[rank.to_rank_form() for rank in rankings])
+
+
+
+
+
     @staticmethod
     def _cache_average_attempts():
         """Populates memcache with the average moves remaining of Games"""
@@ -180,6 +268,5 @@ class PaulsHangmanApi(remote.Service):
             average = float(total_tries_remaining)/count
             memcache.set(MEMCACHE_MOVES_REMAINING,
                          'The average moves remaining is {:.2f}'.format(average))
-
 
 api = endpoints.api_server([PaulsHangmanApi])
