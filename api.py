@@ -115,6 +115,8 @@ class PaulsHangmanApi(remote.Service):
         """Return the current game state."""
         game = get_by_urlsafe(request.urlsafe_game_key, Game)
         if game:
+            if game.game_deleted:
+                raise endpoints.ForbiddenException ('game has been deleted')
             return game.to_form('Time to make a move!')
         else:
             raise endpoints.NotFoundException('Game not found!')
@@ -276,14 +278,8 @@ class PaulsHangmanApi(remote.Service):
            game"""
         # Return all users who have a completed_games, in order of ranking.
         rankings = User.query().order(-User.ranking_score)
-
-
         return UserRankings(
                         items=[rank.to_rank_form() for rank in rankings])
-
-
-
-
 
     @staticmethod
     def _cache_average_attempts():

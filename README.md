@@ -39,7 +39,7 @@ settings.
  - dictionary.dat: A list of the 10 000 most common english words.
  - design.txt: some thoughts on the model design.
  - hangman.py: a standalone CLI implementation of hangman used to initially model
- the data models, and game mechanics. 
+ the data models, and game mechanics.
 
 ##Endpoints Included:
  - **create_user**
@@ -81,7 +81,9 @@ settings.
   - Method: GET
   - Parameters: urlsafe_game_key
   - Returns: GameForm with current game state.
-  - Description: Returns the current state of a game.
+  - Description: Returns the current state of a game. Returns
+  `ForbiddenException` if game has been deleted via the api, and
+  `NotFoundException` if the game doesn't exist.
 
 - **get_game_history**
  - Path: 'game/history/{urlsafe_game_key}'
