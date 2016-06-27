@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-`
-"""api.py - Create and configure the Game API exposing the resources.
-This can also contain game logic. For more complex games it would be wise to
-move game logic to another file. Ideally the API will be simple, concerned
-primarily with communication to/from the API's users."""
+"""This API allows access to game logic for an implementation of Hangman"""
 
 import logging
 import endpoints
@@ -10,11 +7,18 @@ from protorpc import remote, messages
 from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 
-from models import User, Game, Score
-from models import StringMessage, NewGameForm, GameForm, MakeMoveForm,\
-    ScoreForms, UserGames, UserRankings, GameHistory
+from models import (User,
+                    Game,
+                    Score)
+from models import (StringMessage,
+                    NewGameForm,
+                    GameForm,
+                    MakeMoveForm,
+                    ScoreForms,
+                    UserGames,
+                    UserRankings,
+                    GameHistory)
 from utils import get_by_urlsafe
-
 from gamefunc import rand_english_word
 
 ################################################################################
@@ -57,6 +61,9 @@ class PaulsHangmanApi(remote.Service):
         if User.query(User.name == request.user_name).get():
             raise endpoints.ConflictException(
                     'A User with that name already exists!')
+        if not request.email:
+            raise endpoints.BadRequestException(
+                    'No email address supplied.')
         user = User(name=request.user_name, email=request.email)
         user.put()
         return StringMessage(message='User {} created!'.format(
@@ -74,7 +81,8 @@ class PaulsHangmanApi(remote.Service):
             raise endpoints.NotFoundException(
                     'A User with that name does not exist!')
         games = Game.query(Game.user == user.key).filter(
-                                                        Game.game_over == False)
+                                                        Game.game_over == False,
+                                                     Game.game_deleted == False)
         return UserGames(items=[game.to_form('Active Game.') for game in games])
 
 ################################################################################
@@ -110,7 +118,7 @@ class PaulsHangmanApi(remote.Service):
                       response_message=GameForm,
                       path='game/{urlsafe_game_key}',
                       name='get_game',
-                      http_method='POST')
+                      http_method='GET')
     def get_game(self, request):
         """Return the current game state."""
         game = get_by_urlsafe(request.urlsafe_game_key, Game)
@@ -138,13 +146,14 @@ class PaulsHangmanApi(remote.Service):
                       response_message=GameForm,
                       path='del_game/{urlsafe_game_key}',
                       name='del_game',
-                      http_method='GET')
+                      http_method='PUT')
     def del_game(self, request):
         """Delete a game in progress from the DB."""
         game = get_by_urlsafe(request.urlsafe_game_key, Game)
         if game:
             if not game.game_over:
                 game.game_deleted = True
+                game.game_over = True
                 game.put()
                 return game.to_form('Game Deleted')
             else:
@@ -164,9 +173,16 @@ class PaulsHangmanApi(remote.Service):
         # check pre-existing game state:
         game = get_by_urlsafe(request.urlsafe_game_key, Game)
         if game.game_over:
-            return game.to_form('Game already over!')
+            raise endpoints.ForbiddenException(
+                                        'Illegal action: Game is already over.')
+        if game.game_deleted:
+            raise endpoints.ForbiddenException(
+                                        'Illegal action: Game is deleted.')
+        if not request.guess.isalpha():
+            raise endpoints.ForbiddenException(
+                                        'Illegal action: Only a-z allowed')
 
-        # init completness tracker on first guess:
+        # init completness tracker on first valid guess:
         if game.current_guesses == []:
             completed_letters = []  # init success tracking
             for i in game.game_word:
@@ -176,21 +192,24 @@ class PaulsHangmanApi(remote.Service):
         ## Track all moves in the datastore:
         # process new moves:
         move_outcome = 'Correct Guess: False'
-        if request.guess in game.game_word:
+        if request.guess == game.game_word or request.guess in game.game_word:
             move_outcome = 'Correct Guess: True'
         move = '(Player Guess: {0} {1})'.format(request.guess, move_outcome)
         game.move_history.append(move)
 
         # process a correct guess.
-        if request.guess in game.game_word:
+        if not request.guess == game.game_word and request.guess in game.game_word:
             # check each letter against each position, update completness
             # tracking in the current_guesses list:
-            for char in game.game_word:
-                count = 0
-                while count < len(game.current_guesses):
-                    if request.guess == game.game_word[count]:
-                        game.current_guesses[count] = request.guess
-                    count += 1
+            if request.guess == game.game_word[:-1]:
+                game.current_guesses = ['winner']
+            else:
+                for char in game.game_word:
+                    count = 0
+                    while count < len(game.current_guesses):
+                        if request.guess == game.game_word[count]:
+                            game.current_guesses[count] = request.guess
+                        count += 1
             msg = 'correct guess! {}'.format(game.current_guesses)
 
         # process a failed request
@@ -202,10 +221,9 @@ class PaulsHangmanApi(remote.Service):
         # handle end game state.
         if game.tries_remaining < 1:
             game.end_game(False)
-            game.move_history.append('Correctly Guessed word, Game Over!')
+            game.move_history.append('Failed to guess word, Game Over!')
             game.put()
             return game.to_form(msg + ' Game over!')
-
 
         # As the game progresses, the _ are removed from the current_guesses
         # list. The absence of an _ indicates a final guess was succesful.

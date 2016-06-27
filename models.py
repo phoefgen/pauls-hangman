@@ -14,7 +14,7 @@ class User(ndb.Model):
     """User profile"""
     name = ndb.StringProperty(required=True)
     email = ndb.StringProperty(required=True)
-    ranking_score = ndb.IntegerProperty(required=True, default=0)
+    ranking_score = ndb.FloatProperty(required=True, default=10)
     completed_games = ndb.IntegerProperty(required=True, default=0)
 
 
@@ -84,9 +84,9 @@ class Game(ndb.Model):
         # Count the length of the target word, multiply it by the number of
         # guesses that remain (demonstrated skill). Reduce points for a large
         # number of max tries (reflect difficulty setting a game was played at.)
+        difficulty = self.max_tries * 0.3
         points = int(float((len(self.game_word) * self.tries_remaining))
-                                                               / self.max_tries)
-
+                                                               / difficulty)
         score = Score(user=self.user,
                       date=date.today(),
                       won=won,
@@ -108,11 +108,14 @@ class Game(ndb.Model):
         total_score = 0
         for score in scores:
             total_score = total_score + score.points
-            total_score = float(total_score) / player.completed_games
+            if score.won == True:
+                total_score += 10
+
+        total_score = float(total_score) / player.completed_games
 
         # Write average score to User datastore.
         #write updated rank to user Datastore, sort ranks on retrieval.
-        player.ranking_score = int(total_score)
+        player.ranking_score = total_score + 100
         player.put()
         return
 
@@ -168,7 +171,7 @@ class ScoreForm(messages.Message):
 class UserRank(messages.Message):
     """UserRank for outbound ranking information """
     user_name = messages.StringField(1, required=True)
-    ranking_score = messages.IntegerField(2, required=True)
+    ranking_score = messages.FloatField(2, required=True)
 
 class GameHistory(messages.Message):
     move_history = messages.StringField(1, required=True)

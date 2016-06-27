@@ -52,7 +52,7 @@ settings.
 
 - **del_game**
   - Path: 'del_game'
-  - Method: POST
+  - Method: PUT
   - Parameters: urlsafe_game_key
   - Returns: Message confirming deletion of game
   - Description: Deletes a game in progress. Will
