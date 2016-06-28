@@ -17,7 +17,7 @@ def rand_english_word(length):
     # generating a random int, then make sure the game settings match the data:
     word_number = len(potential_word)
     try:
-        word = potential_word[random.randint(1,word_number)]
+        word = potential_word[random.randint(1,word_number-1)]
     except ValueError as e:
         print 'Game Config Error: No words of specified length in word list'
         sys.exit(1)

@@ -135,7 +135,7 @@ was started, including attempts and success of attempts.
 
 - **get_leader_board**
   - Path: 'get_leader_board'
-  - Method: POST
+  - Method: GET
   - Parameters: Number of results
   - Returns: An ordered list of all games.  
   - Description: Returns all games, ranked by points scored in this single game.

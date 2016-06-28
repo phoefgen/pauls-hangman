@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-`
 """This API allows access to game logic for an implementation of Hangman"""
 
-import logging
 import endpoints
 from protorpc import remote, messages
 from google.appengine.api import memcache
@@ -198,6 +197,7 @@ class PaulsHangmanApi(remote.Service):
         game.move_history.append(move)
 
         # process a correct guess.
+        request.guess = request.guess.lower()
         if not request.guess == game.game_word and request.guess in game.game_word:
             # check each letter against each position, update completness
             # tracking in the current_guesses list:
@@ -250,7 +250,7 @@ class PaulsHangmanApi(remote.Service):
                       response_message=ScoreForms,
                       path='leader_board',
                       name='leader_board',
-                      http_method='POST')
+                      http_method='GET')
     def leader_board(self, request):
         """Return a leaderboard. A complete game with more tries_remaining ranks
            higher than a complete game with less tries remaining. A correct
